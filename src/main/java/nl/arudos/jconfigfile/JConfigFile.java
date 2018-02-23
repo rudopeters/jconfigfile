@@ -4,7 +4,6 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -17,9 +16,15 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Class for reading and writing textual configuration files
+ * The configuration files can be ini-style files, files without sections, or a mixture of both
+ * 
+ * @author Rudo Peters
+ *
+ */
 public class JConfigFile {
 	private final char BOM_CHAR = 0xFEFF;
-	private boolean loaded = false;
 	private List<ConfigLine> configLines = null;
 	private Map<ConfigLine, ArrayList<ConfigLine>> sectionMap = null;
 	private File file;
@@ -28,23 +33,30 @@ public class JConfigFile {
 	private Charset detectedCharset = null;
 	private Charset suppliedCharset = null;
 
-	public JConfigFile(File file) {
-		init(file, null);
+	/**
+	 * Initialise the configuration file
+	 * This will trigger a file load
+	 * 
+	 * @param file The configuration File
+	 * @throws IOException 
+	 */
+	public JConfigFile(File file) throws IOException {
+		this.file = file;
+		load();
 	}
 
-	public JConfigFile(File file, String encoding) {
-		init(file, encoding);
-	}
-
-	final private void init(File file, String encoding) {
+	/**
+	 * Initialise the configuration file with the supplied character encoding
+	 * This will trigger a file load
+	 * 
+	 * @param file The configuration File
+	 * @param encoding The file encoding, for example Cp1252 (a.k.a ANSI), UTF-8, etc, or null to attempt auto detection of the encoding
+	 * @throws IOException
+	 */
+	public JConfigFile(File file, String encoding) throws IOException {
 		this.file = file;
 		this.suppliedCharset = (encoding != null) ? Charset.forName(encoding) : null;
-	}
-
-	private void loadWhenRequired() throws IOException {
-		if (!loaded) {
-			load();
-		}
+		load();
 	}
 
 	private String validateNotNull(String field, String value) {
@@ -65,7 +77,13 @@ public class JConfigFile {
 		this.detectedSeparator = separator;
 	}
 
-	public String getDetectedSeparator() {
+	/**
+	 * Get the line separator
+	 * 
+	 * @return String with the line separator
+	 * @throws IOException 
+	 */
+	public String getDetectedSeparator() throws IOException {
 		return this.detectedSeparator;
 	}
 
@@ -73,6 +91,11 @@ public class JConfigFile {
 		this.detectedBOM = b;
 	}
 
+	/**
+	 * Check if the file has a BOM (byte order mark)
+	 * 
+	 * @return boolean true if a BOM was found, false otherwise
+	 */
 	public boolean getDetectedBOM() {
 		return this.detectedBOM;
 	}
@@ -81,10 +104,20 @@ public class JConfigFile {
 		this.detectedCharset = cs;
 	}
 
+	/**
+	 * Get the Charset detected when the file was loaded
+	 * 
+	 * @return Charset
+	 */
 	public Charset getDetectedCharset() {
 		return this.detectedCharset;
 	}
 
+	/**
+	 * Get the Charset supplied to the constructor
+	 * 
+	 * @return Charset
+	 */
 	public Charset getSuppliedCharset() {
 		return this.suppliedCharset;
 	}
@@ -157,6 +190,11 @@ public class JConfigFile {
 
 	}
 
+	/**
+	 * Load the configuration file
+	 * 
+	 * @throws IOException
+	 */
 	public void load() throws IOException {
 		final char CR = new String("\r").charAt(0);
 		final char LF = new String("\n").charAt(0);
@@ -178,9 +216,11 @@ public class JConfigFile {
 			data = "";
 			while ((i = br.read()) != -1) {
 				if (j == 0) {
-					this.setDetectedBOM(i == BOM_CHAR);
 					j++;
-					continue;
+					if (i == BOM_CHAR) {
+						this.setDetectedBOM(true);
+						continue;
+					}
 				}
 				if ((char) i == CR) {
 					separator += CR;
@@ -225,10 +265,13 @@ public class JConfigFile {
 		setSystemProperties();
 		replaceProperties();
 		
-		this.loaded = true;
-		
 	}
 
+	/**
+	 * Save the configuration file
+	 * 
+	 * @throws IOException
+	 */
 	public void save() throws IOException {
 		try (BufferedWriter bw = new BufferedWriter(
 				new OutputStreamWriter(new FileOutputStream(file), this.getDetectedCharset()))) {
@@ -241,10 +284,9 @@ public class JConfigFile {
 				}
 			}
 		}
-		this.loaded = false;
 	}
 
-	private void parse() throws FileNotFoundException, IOException {
+	private void parse() {
 		ArrayList<ConfigLine> currentSectionLines = null;
 		ConfigLine currentSection = null;
 		Pattern pattern = Pattern.compile("^\\s?\\[(.*)\\]\\s?$");
@@ -285,7 +327,7 @@ public class JConfigFile {
 
 	}
 
-	private void replaceProperties() throws IOException {
+	private void replaceProperties() {
 		Pattern variablePattern = Pattern.compile(".*\\$\\{(.+?)\\}.*");
 		Pattern sectionAndPropertyPattern = Pattern.compile("^\\[(.*)\\]\\.(.*?)$");
 		int count;
@@ -355,8 +397,12 @@ public class JConfigFile {
 		}
 	}
 
-	public List<String> getSections() throws IOException {
-		this.loadWhenRequired();
+	/**
+	 * Get a list of all sections
+	 * 
+	 * @return List of sections
+	 */
+	public List<String> getSections() {
 		List<String> sections = new ArrayList<String>();
 		for (ConfigLine configLine : sectionMap.keySet()) {
 			sections.add(configLine.getSection());
@@ -364,8 +410,13 @@ public class JConfigFile {
 		return sections;
 	}
 	
-	public List<String> getKeys(String sectionName) throws IOException {
-		this.loadWhenRequired();
+	/**
+	 * Get a list of all keys in a section
+	 * 
+	 * @param sectionName Name of the section (without square brackets)
+	 * @return List of all keys in the section
+	 */
+	public List<String> getKeys(String sectionName) {
 		List<String> keys = new ArrayList<>();
 		String section = validateNotNull("Section", sectionName).trim();
 		for (Map.Entry<ConfigLine, ArrayList<ConfigLine>> entry : sectionMap.entrySet()) {
@@ -379,8 +430,14 @@ public class JConfigFile {
 		return keys;
 	}
 
-	public boolean hasKey(String sectionName, String keyName) throws IOException {
-		this.loadWhenRequired();
+	/**
+	 * Check if a certain key exists in a section
+	 * 
+	 * @param sectionName Name of the section (without square brackets)
+	 * @param keyName Name of the key
+	 * @return boolean true if the key exists, false if it does not exist
+	 */
+	public boolean hasKey(String sectionName, String keyName) {
 		String section = validateNotNull("Section", sectionName).trim();
 		String key = validateNotNullOrEmpty("Key", keyName).trim();
 		for (Map.Entry<ConfigLine, ArrayList<ConfigLine>> entry : sectionMap.entrySet()) {
@@ -395,8 +452,15 @@ public class JConfigFile {
 		return false;
 	}
 	
-	public String getValue(String sectionName, String keyName) throws IOException {
-		this.loadWhenRequired();
+	/**
+	 * Get the value for a key
+	 * 
+	 * @param sectionName Name of the section (without square brackets)
+	 * 
+	 * @param keyName Name of the key
+	 * @return String value of the key or null if the key is not present or if the value is empty
+	 */
+	public String getValue(String sectionName, String keyName) {
 		String section = validateNotNull("Section", sectionName).trim();
 		String key = validateNotNullOrEmpty("Key", keyName).trim();
 		for (Map.Entry<ConfigLine, ArrayList<ConfigLine>> entry : sectionMap.entrySet()) {
@@ -411,8 +475,15 @@ public class JConfigFile {
 		return null;
 	}
 
+	/**
+	 * Add a new section to the end of the configuration file
+	 * This will trigger a file write and reload
+	 * 
+	 * @param sectionName Name of the new section (without square brackets)
+	 * @return true when the section was added or false if it already existed
+	 * @throws IOException
+	 */
 	public boolean addSection(String sectionName) throws IOException {
-		this.loadWhenRequired();
 		String section = validateNotNull("Section", sectionName).trim();
 		for (Map.Entry<ConfigLine, ArrayList<ConfigLine>> entry : sectionMap.entrySet()) {
 			if (entry.getKey().getSection().equalsIgnoreCase(section)) {
@@ -425,8 +496,17 @@ public class JConfigFile {
 		return true;
 	}
 	
+	/**
+	 * Set the value for a key
+	 * This will trigger a file write and reload
+	 * 
+	 * @param sectionName Name of the section
+	 * @param itemKey Name of the key
+	 * @param itemValue Value of the key, can be null to set a key without value or empty to set an empty value
+	 * @return boolean true if the value was set or false if it was not set because the section does not exist
+	 * @throws IOException
+	 */
 	public boolean setItem(String sectionName, String itemKey, String itemValue) throws IOException {
-		this.loadWhenRequired();
 		addSection(sectionName);
 		String section = sectionName.trim();
 		String key = validateNotNullOrEmpty("Key", itemKey).trim();
