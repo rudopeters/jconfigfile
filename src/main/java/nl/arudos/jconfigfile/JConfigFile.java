@@ -16,9 +16,19 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import javax.script.ScriptEngine;
+import javax.script.ScriptEngineManager;
+import javax.script.ScriptException;
+
 /**
- * Class for reading and writing textual configuration files
- * The configuration files can be ini-style files, files without sections, or a mixture of both
+ * Class for reading and writing textual configuration files The configuration
+ * files can be ini-style files, files without sections, or a mixture of both
+ *
+ * Supported value replacements: other variable:
+ *   driver=${[Browser settings].webdriver.binary}
+ *   environment variable: hostname=${COMPUTERNAME}
+ *   system property: vendor=${java.vendor}
+ *   JavaScript expression: result=${!-var s='hello'; s;-!}
  * 
  * @author Rudo Peters
  *
@@ -32,13 +42,14 @@ public class JConfigFile {
 	private boolean detectedBOM = false;
 	private Charset detectedCharset = null;
 	private Charset suppliedCharset = null;
+	public final String ENCODING_ANSI = "Cp1252";
 
 	/**
-	 * Initialise the configuration file
-	 * This will trigger a file load
+	 * Initialise the configuration file This will trigger a file load
 	 * 
-	 * @param file The configuration File
-	 * @throws IOException 
+	 * @param file
+	 *            The configuration File
+	 * @throws IOException
 	 */
 	public JConfigFile(File file) throws IOException {
 		this.file = file;
@@ -49,8 +60,11 @@ public class JConfigFile {
 	 * Initialise the configuration file with the supplied character encoding
 	 * This will trigger a file load
 	 * 
-	 * @param file The configuration File
-	 * @param encoding The file encoding, for example Cp1252 (a.k.a ANSI), UTF-8, etc, or null to attempt auto detection of the encoding
+	 * @param file
+	 *            The configuration File
+	 * @param encoding
+	 *            The file encoding, for example Cp1252 (a.k.a ANSI), UTF-8,
+	 *            etc, or null to attempt auto detection of the encoding
 	 * @throws IOException
 	 */
 	public JConfigFile(File file, String encoding) throws IOException {
@@ -72,23 +86,14 @@ public class JConfigFile {
 		}
 		return value;
 	}
-	
-	private void setDetectedSeparator(String separator) {
-		this.detectedSeparator = separator;
-	}
 
 	/**
 	 * Get the line separator
 	 * 
 	 * @return String with the line separator
-	 * @throws IOException 
 	 */
-	public String getDetectedSeparator() throws IOException {
+	public String getLineSeparator() {
 		return this.detectedSeparator;
-	}
-
-	private void setDetectedBOM(boolean b) {
-		this.detectedBOM = b;
 	}
 
 	/**
@@ -96,30 +101,17 @@ public class JConfigFile {
 	 * 
 	 * @return boolean true if a BOM was found, false otherwise
 	 */
-	public boolean getDetectedBOM() {
+	public boolean hasBOM() {
 		return this.detectedBOM;
 	}
 
-	private void setDetectedCharset(Charset cs) {
-		this.detectedCharset = cs;
-	}
-
 	/**
-	 * Get the Charset detected when the file was loaded
+	 * Get the Charset
 	 * 
 	 * @return Charset
 	 */
-	public Charset getDetectedCharset() {
+	public Charset getCharset() {
 		return this.detectedCharset;
-	}
-
-	/**
-	 * Get the Charset supplied to the constructor
-	 * 
-	 * @return Charset
-	 */
-	public Charset getSuppliedCharset() {
-		return this.suppliedCharset;
 	}
 
 	private void detectCharset() throws IOException {
@@ -147,7 +139,7 @@ public class JConfigFile {
 		}
 
 		// use the supplied Charset (if any) as the default
-		Charset cs = this.getSuppliedCharset();
+		Charset cs = this.suppliedCharset;
 
 		// if the file has a BOM, use that for determining the Charset
 		for (int k = 0; k < knownBOMs.length; k++) {
@@ -186,7 +178,7 @@ public class JConfigFile {
 		}
 
 		// save the detected values
-		this.setDetectedCharset(cs);
+		this.detectedCharset = cs;
 
 	}
 
@@ -203,14 +195,14 @@ public class JConfigFile {
 		sectionMap = new LinkedHashMap<ConfigLine, ArrayList<ConfigLine>>();
 		configLines = null;
 		configLines = new ArrayList<ConfigLine>();
-		
+
 		detectCharset();
 
 		String data = "";
 		String separator = "";
 
 		try (BufferedReader br = new BufferedReader(
-				new InputStreamReader(new FileInputStream(file), this.getDetectedCharset()))) {
+				new InputStreamReader(new FileInputStream(file), this.getCharset()))) {
 			int i;
 			int j = 0;
 			data = "";
@@ -218,9 +210,10 @@ public class JConfigFile {
 				if (j == 0) {
 					j++;
 					if (i == BOM_CHAR) {
-						this.setDetectedBOM(true);
+						this.detectedBOM = true;
 						continue;
 					}
+					this.detectedBOM = false;
 				}
 				if ((char) i == CR) {
 					separator += CR;
@@ -233,11 +226,11 @@ public class JConfigFile {
 				}
 			}
 
-			this.setDetectedSeparator(separator);
+			this.detectedSeparator = separator;
 
 			// add the default section
 			configLines.add(new ConfigLine("[]"));
-			
+
 			configLines.add(new ConfigLine(data));
 
 			if (i == -1) {
@@ -259,12 +252,9 @@ public class JConfigFile {
 			}
 
 		}
-		
+
 		parse();
 		replaceProperties();
-		setSystemProperties();
-		replaceProperties();
-		
 	}
 
 	/**
@@ -274,13 +264,13 @@ public class JConfigFile {
 	 */
 	public void save() throws IOException {
 		try (BufferedWriter bw = new BufferedWriter(
-				new OutputStreamWriter(new FileOutputStream(file), this.getDetectedCharset()))) {
-			if (this.getDetectedBOM()) {
+				new OutputStreamWriter(new FileOutputStream(file), this.getCharset()))) {
+			if (this.hasBOM()) {
 				bw.write(BOM_CHAR);
 			}
 			for (ConfigLine configLine : configLines) {
 				if (!configLine.getLine().equals("[]")) {
-					bw.write(configLine.getLine() + this.getDetectedSeparator());
+					bw.write(configLine.getLine() + this.getLineSeparator());
 				}
 			}
 		}
@@ -289,13 +279,13 @@ public class JConfigFile {
 	private void parse() {
 		ArrayList<ConfigLine> currentSectionLines = null;
 		ConfigLine currentSection = null;
-		Pattern pattern = Pattern.compile("^\\s?\\[(.*)\\]\\s?$");
+		Pattern sectionPattern = Pattern.compile("^\\s?\\[(.*)\\]\\s?$");
 		for (ConfigLine configLine : this.configLines) {
 			if (!configLine.hasData()) {
 				continue;
 			}
 			String line = configLine.getData();
-			Matcher m = pattern.matcher(line);
+			Matcher m = sectionPattern.matcher(line);
 			if (m.matches() && m.groupCount() == 1) {
 				if (currentSectionLines != null) {
 					// store the previous section
@@ -306,7 +296,8 @@ public class JConfigFile {
 				configLine.setSection(m.group(1).trim());
 				for (ConfigLine l : sectionMap.keySet()) {
 					if (l.getSection().equalsIgnoreCase(configLine.getSection())) {
-						throw new IllegalArgumentException(String.format("Duplicate section '%s'", configLine.getSection()));
+						throw new IllegalArgumentException(
+								String.format("Duplicate section '%s'", configLine.getSection()));
 					}
 				}
 				currentSectionLines = new ArrayList<ConfigLine>();
@@ -314,7 +305,8 @@ public class JConfigFile {
 			} else {
 				for (ConfigLine l : currentSectionLines) {
 					if (l.getKey().equalsIgnoreCase(configLine.getKey())) {
-						throw new IllegalArgumentException(String.format("Duplicate key '%s' in section '%s'", configLine.getKey(), currentSection.getSection()));
+						throw new IllegalArgumentException(String.format("Duplicate key '%s' in section '%s'",
+								configLine.getKey(), currentSection.getSection()));
 					}
 				}
 				currentSectionLines.add(configLine);
@@ -327,9 +319,19 @@ public class JConfigFile {
 
 	}
 
+	private String executeJavascript(String script) {
+		ScriptEngineManager factory = new ScriptEngineManager();
+		ScriptEngine engine = factory.getEngineByName("JavaScript");
+		try {
+			return (String) engine.eval(script).toString();
+		} catch (ScriptException e) {
+			return "##EXCEPTION: " + e.getLocalizedMessage();
+		}
+	}
+
 	private void replaceProperties() {
-		Pattern variablePattern = Pattern.compile(".*\\$\\{(.+?)\\}.*");
-		Pattern sectionAndPropertyPattern = Pattern.compile("^\\[(.*)\\]\\.(.*?)$");
+		Pattern variablePattern = Pattern.compile(".*(\\$\\{(!-)?(.+?)(-!)?\\}).*");
+		Pattern sectionPattern = Pattern.compile("^\\[(.*)\\]:(.*?)$");
 		int count;
 		do {
 			count = 0;
@@ -338,63 +340,44 @@ public class JConfigFile {
 				for (int i = 0; i < configLines.size(); i++) {
 					String s = configLines.get(i).getData();
 					Matcher m = variablePattern.matcher(s);
-					if (m.matches() && m.groupCount() >= 1) {
-						for (int j = 1; j <= m.groupCount(); j++) {
-							String propertyName = m.group(j);
+					if (m.matches()) {
+						String newValue = null;
+						if (m.group(2) != null || m.group(4) != null) {
+							if (m.group(2) == null) {
+								throw new RuntimeException("JavaScript start tag '!-' not found");
+							} else if (m.group(4) == null) {
+								throw new RuntimeException("JavaScript end tag '-!' not found");
+							}
+							newValue = executeJavascript(m.group(3));
+						} else {
+							String propertyName = m.group(3);
 							if (propertyName.isEmpty()) {
 								continue;
 							}
-
-							String newValue = null;
-
 							if (propertyName.startsWith("[")) {
-								Matcher matcher = sectionAndPropertyPattern.matcher(propertyName);
-								if (matcher.matches() && matcher.groupCount() == 3) {
+								Matcher matcher = sectionPattern.matcher(propertyName);
+								if (matcher.matches() && matcher.groupCount() == 2) {
 									String section = matcher.group(1);
 									String name = matcher.group(2);
 									newValue = getValue(section, name);
 								}
 							}
-
 							if (newValue == null) {
 								newValue = System.getenv(propertyName);
 							}
-
 							if (newValue == null) {
 								newValue = System.getProperty(propertyName);
 							}
-
-							if (newValue != null) {
-								s = s.replace("${" + propertyName + "}", newValue);
-								configLines.get(i).setData(s);
-								count++;
-							}
-
+						}
+						if (newValue != null) {
+							s = s.replace(m.group(1), newValue);
+							configLines.get(i).setData(s);
+							count++;
 						}
 					}
 				}
 			}
 		} while (count > 0);
-	}
-	
-	private void setSystemProperties() {
-		for (Map.Entry<ConfigLine, ArrayList<ConfigLine>> entry : sectionMap.entrySet()) {
-			if (entry.getKey().getSection().equalsIgnoreCase("system properties")) {
-				ArrayList<ConfigLine> configLines = entry.getValue();
-				for (ConfigLine configLine : configLines) {
-					if (!configLine.hasData()) {
-						continue;
-					}
-					String[] parts = configLine.getData().split("=", 2);
-					if (parts.length != 2 || parts[0].trim().isEmpty()) {
-						throw new IllegalArgumentException(
-								String.format("System property '%s' is invalid", configLine.getData()));
-					}
-					System.setProperty(parts[0].trim(), parts[1]);
-				}
-				break;
-			}
-		}
 	}
 
 	/**
@@ -405,15 +388,16 @@ public class JConfigFile {
 	public List<String> getSections() {
 		List<String> sections = new ArrayList<String>();
 		for (ConfigLine configLine : sectionMap.keySet()) {
-			sections.add(configLine.getSection());
+			sections.add(new String(configLine.getSection()));
 		}
 		return sections;
 	}
-	
+
 	/**
 	 * Get a list of all keys in a section
 	 * 
-	 * @param sectionName Name of the section (without square brackets)
+	 * @param sectionName
+	 *            Name of the section (without square brackets)
 	 * @return List of all keys in the section
 	 */
 	public List<String> getKeys(String sectionName) {
@@ -422,7 +406,7 @@ public class JConfigFile {
 		for (Map.Entry<ConfigLine, ArrayList<ConfigLine>> entry : sectionMap.entrySet()) {
 			if (entry.getKey().getSection().equalsIgnoreCase(section)) {
 				for (ConfigLine configLine : entry.getValue()) {
-					keys.add(configLine.getKey());
+					keys.add(new String(configLine.getKey()));
 				}
 				break;
 			}
@@ -433,8 +417,10 @@ public class JConfigFile {
 	/**
 	 * Check if a certain key exists in a section
 	 * 
-	 * @param sectionName Name of the section (without square brackets)
-	 * @param keyName Name of the key
+	 * @param sectionName
+	 *            Name of the section (without square brackets)
+	 * @param keyName
+	 *            Name of the key
 	 * @return boolean true if the key exists, false if it does not exist
 	 */
 	public boolean hasKey(String sectionName, String keyName) {
@@ -447,18 +433,22 @@ public class JConfigFile {
 						return true;
 					}
 				}
+				return false;
 			}
 		}
 		return false;
 	}
-	
+
 	/**
 	 * Get the value for a key
 	 * 
-	 * @param sectionName Name of the section (without square brackets)
+	 * @param sectionName
+	 *            Name of the section (without square brackets)
 	 * 
-	 * @param keyName Name of the key
-	 * @return String value of the key or null if the key is not present or if the value is empty
+	 * @param keyName
+	 *            Name of the key
+	 * @return String value of the key or null if the key is not present or if
+	 *         the value is empty
 	 */
 	public String getValue(String sectionName, String keyName) {
 		String section = validateNotNull("Section", sectionName).trim();
@@ -467,7 +457,7 @@ public class JConfigFile {
 			if (entry.getKey().getSection().equalsIgnoreCase(section)) {
 				for (ConfigLine configLine : entry.getValue()) {
 					if (configLine.getKey().equalsIgnoreCase(key)) {
-						return configLine.getValue();
+						return new String(configLine.getValue());
 					}
 				}
 			}
@@ -476,34 +466,41 @@ public class JConfigFile {
 	}
 
 	/**
-	 * Add a new section to the end of the configuration file
-	 * This will trigger a file write and reload
+	 * Add a new section to the end of the configuration file This will trigger
+	 * a file write and reload
 	 * 
-	 * @param sectionName Name of the new section (without square brackets)
+	 * @param sectionName
+	 *            Name of the new section (without square brackets)
 	 * @return true when the section was added or false if it already existed
 	 * @throws IOException
 	 */
 	public boolean addSection(String sectionName) throws IOException {
 		String section = validateNotNull("Section", sectionName).trim();
+		if (section.isEmpty()) {
+			return false;
+		}
 		for (Map.Entry<ConfigLine, ArrayList<ConfigLine>> entry : sectionMap.entrySet()) {
 			if (entry.getKey().getSection().equalsIgnoreCase(section)) {
 				return false;
 			}
 		}
-		validateNotNullOrEmpty("Section", sectionName);
 		configLines.add(new ConfigLine("[" + section + "]"));
 		save();
 		return true;
 	}
-	
+
 	/**
-	 * Set the value for a key
-	 * This will trigger a file write and reload
+	 * Set the value for a key This will trigger a file write and reload
 	 * 
-	 * @param sectionName Name of the section
-	 * @param itemKey Name of the key
-	 * @param itemValue Value of the key, can be null to set a key without value or empty to set an empty value
-	 * @return boolean true if the value was set or false if it was not set because the section does not exist
+	 * @param sectionName
+	 *            Name of the section
+	 * @param itemKey
+	 *            Name of the key
+	 * @param itemValue
+	 *            Value of the key, can be null to set a key without value or
+	 *            empty to set an empty value
+	 * @return boolean true if the value was set or false if it was not set
+	 *         because the section does not exist
 	 * @throws IOException
 	 */
 	public boolean setItem(String sectionName, String itemKey, String itemValue) throws IOException {
@@ -541,9 +538,9 @@ public class JConfigFile {
 				if (j == -1) {
 					j = configLines.lastIndexOf(entry.getKey());
 				}
-				
+
 				if (j < configLines.size()) {
-					configLines.add(j+1, newLine);
+					configLines.add(j + 1, newLine);
 				} else {
 					configLines.add(newLine);
 				}
@@ -605,7 +602,7 @@ class ConfigLine {
 	public String getSection() {
 		return section;
 	}
-	
+
 	protected void setData(String data) {
 		this.data = data;
 		parseData();
