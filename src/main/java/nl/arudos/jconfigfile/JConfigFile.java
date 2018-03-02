@@ -394,6 +394,23 @@ public class JConfigFile {
 	}
 
 	/**
+ 	 * Check if a section exists
+ 	 * 
+	 * @param sectionName
+	 *            Name of the section (without square brackets) 
+	 * @return boolean true if the section exists, false otherwise
+	 */
+	public boolean hasSection(String sectionName) {
+		String section = validateNotNull("Section", sectionName).trim();
+		for (ConfigLine configLine : sectionMap.keySet()) {
+			if (configLine.getSection().equalsIgnoreCase(section)) {
+				return true;
+			}
+		}
+		return false;
+	}
+	
+	/**
 	 * Get a list of all keys in a section
 	 * 
 	 * @param sectionName
