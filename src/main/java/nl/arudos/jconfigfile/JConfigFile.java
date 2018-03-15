@@ -21,14 +21,15 @@ import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 
 /**
- * Class for reading and writing textual configuration files The configuration
- * files can be ini-style files, files without sections, or a mixture of both
- *
- * Supported value replacements: other variable:
- *   driver=${[Browser settings].webdriver.binary}
- *   environment variable: hostname=${COMPUTERNAME}
- *   system property: vendor=${java.vendor}
- *   JavaScript expression: result=${!-var s='hello'; s;-!}
+ * Class for reading and writing textual configuration files<br>
+ * The configuration files can be ini-style files, files without sections, or a
+ * mixture of both<br>
+ * <br>
+ * Supported value replacements:<br>
+ * -> other variable: driver=${[Browser settings].webdriver.binary}<br>
+ * -> environment variable: hostname=${COMPUTERNAME}<br>
+ * -> system property: vendor=${java.vendor}<br>
+ * -> JavaScript expression: result=${!-var s='hello'; s;-!}<br>
  * 
  * @author Rudo Peters
  *
@@ -394,10 +395,10 @@ public class JConfigFile {
 	}
 
 	/**
- 	 * Check if a section exists
- 	 * 
+	 * Check if a section exists
+	 * 
 	 * @param sectionName
-	 *            Name of the section (without square brackets) 
+	 *            Name of the section (without square brackets)
 	 * @return boolean true if the section exists, false otherwise
 	 */
 	public boolean hasSection(String sectionName) {
@@ -409,7 +410,7 @@ public class JConfigFile {
 		}
 		return false;
 	}
-	
+
 	/**
 	 * Get a list of all keys in a section
 	 * 
@@ -630,7 +631,7 @@ class ConfigLine {
 	}
 
 	public boolean hasData() {
-		return (this.data != null);
+		return (this.data != null && !this.data.trim().isEmpty());
 	}
 
 	public void setComment(String comment) {
@@ -673,7 +674,7 @@ class ConfigLine {
 	}
 
 	public String getLine() {
-		return (hasData() ? getData() : "") + (hasComment() ? getComment() : "");
+		return (this.data != null ? getData() : "") + (hasComment() ? getComment() : "");
 	}
 
 }
